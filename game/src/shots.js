@@ -1,7 +1,8 @@
 // Staged scenes for screenshots: each one runs the real game simulation from a
 // chosen starting state and leaves a lively frame behind. Nothing here draws
 // anything itself — the renderer paints the staged world exactly as it paints play.
-import { STAGE_LENGTH, STEP, WORLD_LENGTH } from './config.js';
+import { STAGE_LENGTH, STEP, WORLD_LENGTH, GROUND_Y, TURKEY_HEIGHT } from './config.js';
+import { FARMER_LUNGE, FARMER_SEARCH } from './farmer.js';
 import { createKnife } from './hazards.js';
 import { SCREEN_CAUGHT, SCREEN_ESCAPED, SCREEN_PLAY, SCREEN_TITLE } from './world.js';
 
@@ -33,13 +34,6 @@ function runAutopilot(world, steps) {
   }
 }
 
-function placeFarmerClose(world, gap) {
-  const t = world.turkey.turkey;
-  world.farmer.farmer.x = t.x - gap;
-  world.farmer.farmer.mode = 'chase';
-  world.farmer.farmer.spotted = true;
-}
-
 export function stageShot(name, world) {
   world.reset();
   const t = world.turkey.turkey;
@@ -50,25 +44,57 @@ export function stageShot(name, world) {
   }
 
   if (name === 'play') {
-    // Late farmyard: the first oven is ahead, knives have started to fall,
-    // fences and corn fill the frame, the farmer is right on the turkey's tail.
+    // Late farmyard: run the autopilot up to the first oven so the world is
+    // lived-in (corn collected, knives already falling), then freeze the frame
+    // at the near-caught beat — the turkey at the top of its jump over the lit
+    // oven, the farmer lunging a single stride behind it.
     t.x = 7450;
     world.farmer.farmer.x = 7240;
     world.state.camX = t.x - 380;
     world.state.knifeTimer = 0.2; // a knife is already falling when the frame is taken
     runAutopilot(world, 170);
-    placeFarmerClose(world, 215);
-    // Frame the shot: shift the camera until the parallax barn is clear of the
-    // farmer, the turkey stays left of centre, and the oven stays in frame.
-    const ovenX = 8300;
-    for (const d of [0, -80, 80, -160, 160, -240, 240, -320, 320, -360, 360, -400, 400]) {
-      const camX = t.x - 380 + d;
+    // Pose the near-caught moment by hand: turkey centred over the oven at
+    // mid-jump, head turned back in panic; farmer one stride behind, leaning
+    // into the lunge with the pitchfork reaching forward.
+    const oven = world.state.ovens.find((o) => o.x === 8300) ?? world.state.ovens[0];
+    t.x = oven.x + oven.width / 2 - 32;
+    t.y = GROUND_Y - TURKEY_HEIGHT - 140;
+    t.onGround = false;
+    t.vy = 0;
+    t.lookBack = true;
+    t.invuln = 0;
+    const farmer = world.farmer.farmer;
+    farmer.x = t.x - 70;
+    farmer.mode = FARMER_LUNGE;
+    farmer.lean = 1;
+    farmer.runPhase = Math.PI / 2; // legs at their widest split
+    farmer.spotted = true;
+    // A knife already falling just ahead of the turkey, low enough to read
+    // mid-frame, shadow and "!" on the ground below it, and a corn arc over
+    // the jump.
+    const knife = createKnife(t.x + 240, 0);
+    knife.y = 330;
+    world.state.knives.push(knife);
+    for (const [dx, dy] of [[-45, -230], [0, -262], [45, -230]]) {
+      world.state.corns.push({
+        x: oven.x + oven.width / 2 + dx,
+        y: GROUND_Y + dy,
+        taken: false,
+      });
+    }
+    // Frame it low: ground and actors fill the bottom half, the barn stays
+    // clear of the farmer, the oven stays fully in frame.
+    for (const d of [0, -60, 60, -120, 120, -180, 180, -240, 240]) {
+      const camX = t.x - 480 + d;
       const barnX = 880 - (((camX * 0.5) % 1600) + 1600) % 1600;
-      const farmerSX = t.x - 215 - camX;
+      const farmerSX = farmer.x - camX;
       const turkeySX = t.x - camX;
-      const ovenSX = ovenX - camX;
+      const ovenSX = oven.x - camX;
+      const knifeSX = knife.x - camX;
       const barnClear = barnX + 162 < farmerSX - 20 || barnX > farmerSX + 70;
-      if (barnClear && turkeySX >= 200 && turkeySX <= 760 && ovenSX >= 150 && ovenSX <= 1250) {
+      if (barnClear && turkeySX >= 380 && turkeySX <= 620
+        && ovenSX >= 120 && ovenSX + oven.width <= 1250
+        && knifeSX >= 150 && knifeSX <= 1250) {
         world.state.camX = camX;
         break;
       }
@@ -79,20 +105,48 @@ export function stageShot(name, world) {
   }
 
   if (name === 'kitchen') {
-    // Deep in the kitchen: ovens close together, knives falling, a haystack to hide in.
-    t.x = STAGE_LENGTH + 4200;
-    world.farmer.farmer.x = t.x - 260;
+    // The hide beat: the turkey is inside a stage-2 haystack with only its
+    // tail feathers showing, and the farmer is right there sniffing the same
+    // haystack, "?" over his head. No giant banner — the HUD top bar already
+    // names the stage, so the frame stays about the hiding.
+    // Pick a haystack that has a lit oven a short run to its right, so the
+    // frame holds the hide, the search, the knife and the oven at once.
+    const stageHay = world.state.haystacks.filter((h) => h.x > STAGE_LENGTH);
+    const stageOvens = world.state.ovens.filter((o) => o.x > STAGE_LENGTH);
+    let hay = stageHay[0];
+    let oven = stageOvens[0];
+    for (const h of stageHay) {
+      const nearOven = stageOvens.find((o) => o.x - h.x > 350 && o.x - h.x < 750);
+      if (nearOven) { hay = h; oven = nearOven; break; }
+    }
     world.state.stage = 2;
-    world.state.camX = t.x - 380;
-    world.state.knifeTimer = 0.2; // knives are already falling in the kitchen
-    runAutopilot(world, 120);
-    // Drop one more knife just ahead of the turkey so a blade is visibly falling
-    // in the frame, then let the autopilot run under it.
-    world.state.knives.push(createKnife(t.x + 300, 0));
-    runAutopilot(world, 28);
-    placeFarmerClose(world, 235);
-    world.state.banner = 'STAGE 2 — THE KITCHEN!';
-    world.state.bannerTimer = 1.8;
+    t.x = hay.x + hay.width / 2 - 32;
+    t.y = GROUND_Y - TURKEY_HEIGHT;
+    t.onGround = true;
+    t.hidden = true;
+    t.hideTimer = 4;
+    t.lookBack = false;
+    const farmer = world.farmer.farmer;
+    // Far enough left to stand clear of the oven behind him, so the "?" sits
+    // over the pale tiled wall instead of the dark oven.
+    farmer.x = hay.x - 170;
+    farmer.mode = FARMER_SEARCH;
+    farmer.searchX = hay.x;
+    farmer.modeTimer = 2.5;
+    farmer.runPhase = 0.8;
+    farmer.spotted = false;
+    // A knife already falling just past the haystack, low enough to read.
+    const knife = createKnife(hay.x + 380, 0);
+    knife.y = 330;
+    world.state.knives.push(knife);
+    // Frame the haystack left of centre with the farmer on its doorstep and
+    // the oven fully in frame on the right — never cut at the edge.
+    world.state.camX = Math.min(
+      Math.max(oven.x - 1110, hay.x - 430),
+      hay.x - 330,
+    );
+    world.state.banner = null;
+    world.state.bannerTimer = 0;
     return { screen: SCREEN_PLAY, best: 0 };
   }
 

@@ -10,6 +10,9 @@ export const FARMER_CHASE = 'chase';
 export const FARMER_SEARCH = 'search';
 export const FARMER_STUMBLE = 'stumble';
 export const FARMER_GLOAT = 'gloat';
+// The near-caught lunge: the farmer leaning hard forward, pitchfork reaching
+// out in front of him. Staged shots use it; live play never sets it.
+export const FARMER_LUNGE = 'lunge';
 
 export function createFarmer() {
   const farmer = {
@@ -22,6 +25,7 @@ export function createFarmer() {
     speed: 0,
     searchX: 0, // the haystack he is sniffing around
     spotted: false, // true while close enough to flash the SPOTTED banner
+    lean: 1, // lunge direction: +1 reaches to the right, -1 to the left
   };
 
   function reset(startX) {
@@ -34,6 +38,7 @@ export function createFarmer() {
     farmer.speed = 0;
     farmer.searchX = 0;
     farmer.spotted = false;
+    farmer.lean = 1;
   }
 
   // Returns 'caught' when the farmer grabs the turkey, otherwise null.
@@ -143,7 +148,12 @@ export function createFarmer() {
       return;
     }
 
-    const legSwing = Math.sin(farmer.runPhase) * 12;
+    // Lunge: the whole body leans forward around the feet and the legs split
+    // wide, like a sprinter one stride from the catch. Staged shots only.
+    const lunging = farmer.mode === FARMER_LUNGE;
+    if (lunging) ctx.rotate(0.16 * farmer.lean);
+    if (lunging) ctx.scale(1.2, 1.2); // the lunging farmer looms larger
+    const legSwing = (lunging ? 1 : Math.sin(farmer.runPhase)) * 12;
     // Legs: blue overalls, boots pumping.
     ctx.strokeStyle = '#1e3a8a';
     ctx.lineWidth = 9;
@@ -170,18 +180,34 @@ export function createFarmer() {
     ctx.strokeStyle = '#7c2d12';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(18, 30);
-    ctx.lineTo(34, -14);
+    if (lunging) {
+      // The fork shaft points forward and low, reaching for the turkey.
+      ctx.moveTo(18, 30);
+      ctx.lineTo(46 * farmer.lean, 6);
+    } else {
+      ctx.moveTo(18, 30);
+      ctx.lineTo(34, -14);
+    }
     ctx.stroke();
     ctx.strokeStyle = '#d1d5db';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(34, -14);
-    ctx.lineTo(28, -30);
-    ctx.moveTo(34, -14);
-    ctx.lineTo(34, -32);
-    ctx.moveTo(34, -14);
-    ctx.lineTo(40, -30);
+    if (lunging) {
+      const tipX = 46 * farmer.lean;
+      ctx.moveTo(tipX, 6);
+      ctx.lineTo(tipX - 6 * farmer.lean, -8);
+      ctx.moveTo(tipX, 6);
+      ctx.lineTo(tipX, -10);
+      ctx.moveTo(tipX, 6);
+      ctx.lineTo(tipX + 6 * farmer.lean, -8);
+    } else {
+      ctx.moveTo(34, -14);
+      ctx.lineTo(28, -30);
+      ctx.moveTo(34, -14);
+      ctx.lineTo(34, -32);
+      ctx.moveTo(34, -14);
+      ctx.lineTo(40, -30);
+    }
     ctx.stroke();
 
     // Head: beard, moustache, straw hat bouncing with the run.
@@ -210,10 +236,11 @@ export function createFarmer() {
     ctx.stroke();
 
     if (farmer.mode === FARMER_SEARCH) {
+      // Big and high, so it reads over a wall or an oven even at small scale.
       ctx.fillStyle = '#111';
-      ctx.font = 'bold 26px sans-serif';
+      ctx.font = 'bold 34px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('?', 26, -24);
+      ctx.fillText('?', 30, -46);
     }
     if (farmer.mode === FARMER_GLOAT) {
       ctx.fillStyle = '#111';

@@ -2,6 +2,7 @@
 // pause overlay and both end screens. Everything is drawn from the live world
 // state, so a screenshot is always a real frame of the game.
 import { GROUND_Y, VIEW_H, VIEW_W } from './config.js';
+import { FARMER_LUNGE, FARMER_STUMBLE } from './farmer.js';
 import { drawHud } from './hud.js';
 import { drawKnife, drawKnifeShadow, drawOven } from './hazards.js';
 import {
@@ -205,15 +206,23 @@ function drawTitleScreen(ctx, world, best, time) {
   ctx.fillText('← → steer    SPACE / ↑ jump    SHIFT dash    ↓ hide in haystacks', VIEW_W / 2, 336);
   ctx.fillText('Jump fences and ovens — dodge the falling carving knives — grab corn!', VIEW_W / 2, 368);
   // The turkey and the farmer face off on the ground, nothing behind them.
+  // The turkey looks back in panic; the farmer leans in toward it, pitchfork
+  // lowered — this is a chase, not a friendly wave.
   turkey.turkey.lookBack = true;
   turkey.turkey.runPhase = time * 8;
   turkey.draw(ctx, 380, time);
-  farmer.farmer.mode = 'chase';
-  farmer.farmer.runPhase = time * 8;
+  farmer.farmer.mode = FARMER_LUNGE;
+  farmer.farmer.lean = -1;
+  farmer.farmer.runPhase = Math.PI / 2;
   farmer.draw(ctx, 860, time);
-  ctx.fillStyle = '#fff';
+  // A dark pill behind the start line: white on pale yellow vanishes small.
+  const prompt = 'PRESS SPACE OR CLICK TO START';
   ctx.font = 'bold 26px sans-serif';
-  ctx.fillText('PRESS SPACE OR CLICK TO START', VIEW_W / 2, 452);
+  const promptW = ctx.measureText(prompt).width;
+  ctx.fillStyle = 'rgba(41,26,14,0.78)';
+  ctx.fillRect(VIEW_W / 2 - promptW / 2 - 22, 424, promptW + 44, 46);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(prompt, VIEW_W / 2, 452);
   ctx.font = 'bold 20px sans-serif';
   if (best > 0) ctx.fillText(`BEST SCORE: ${best}`, VIEW_W / 2, 690);
   else ctx.fillText('Reach the forest gate to escape Thanksgiving dinner!', VIEW_W / 2, 690);
@@ -266,7 +275,7 @@ function drawCaughtScreen(ctx, world, time) {
 }
 
 function drawEscapedScreen(ctx, world, time) {
-  const { turkey } = world;
+  const { turkey, farmer } = world;
   // The forest: deep green, tall pines, golden light through the leaves.
   const g = ctx.createLinearGradient(0, 0, 0, VIEW_H);
   g.addColorStop(0, '#14532d');
@@ -303,19 +312,51 @@ function drawEscapedScreen(ctx, world, time) {
   }
   ctx.fillStyle = '#166534';
   ctx.fillRect(0, GROUND_Y, VIEW_W, VIEW_H - GROUND_Y);
-  // Tom runs free on the right, clear of the centred score text, motion lines behind him.
+  // The forest gate Tom actually ran through stands behind him, wide enough
+  // to frame him, and the farmer lies far behind, face-down in the dirt.
+  const gateCX = 720;
+  ctx.fillStyle = '#166534';
+  ctx.fillRect(gateCX - 118, GROUND_Y - 190, 16, 190);
+  ctx.fillRect(gateCX + 102, GROUND_Y - 190, 16, 190);
+  ctx.fillStyle = '#15803d';
+  ctx.beginPath();
+  ctx.arc(gateCX, GROUND_Y - 190, 110, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = '#fef3c7';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('FOREST', gateCX, GROUND_Y - 210);
+  ctx.fillStyle = '#fde68a';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('FREEDOM!', gateCX, GROUND_Y - 186);
+  // Tom, bigger and centre-frame, running free in front of the gate.
   turkey.turkey.runPhase = time * 12;
   turkey.turkey.lookBack = false;
   turkey.turkey.invuln = 0;
-  turkey.draw(ctx, 920, time);
+  ctx.save();
+  ctx.translate(700, GROUND_Y);
+  ctx.scale(1.6, 1.6);
+  ctx.translate(-700, -GROUND_Y);
+  turkey.draw(ctx, 700, time);
+  ctx.restore();
+  // Motion lines trail behind him, well clear of the restart line below.
   ctx.strokeStyle = 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 4;
   for (let i = 0; i < 3; i += 1) {
     ctx.beginPath();
-    ctx.moveTo(780 - i * 30, 560 + i * 22);
-    ctx.lineTo(860 - i * 30, 560 + i * 22);
+    ctx.moveTo(500 - i * 26, 516 + i * 24);
+    ctx.lineTo(580 - i * 26, 516 + i * 24);
     ctx.stroke();
   }
+  // The farmer, smaller and far behind, face-down in the dirt.
+  farmer.farmer.mode = FARMER_STUMBLE;
+  farmer.farmer.runPhase = 0;
+  ctx.save();
+  ctx.translate(230, GROUND_Y);
+  ctx.scale(0.75, 0.75);
+  ctx.translate(-230, -GROUND_Y);
+  farmer.draw(ctx, 230, time);
+  ctx.restore();
   ctx.textAlign = 'center';
   ctx.fillStyle = '#bbf7d0';
   ctx.font = 'bold 84px sans-serif';
@@ -323,9 +364,10 @@ function drawEscapedScreen(ctx, world, time) {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 26px sans-serif';
   ctx.fillText('Tom made it to the forest. No Thanksgiving dinner this year!', VIEW_W / 2, 196);
+  // The score sits up here now: the bigger turkey covers the old spot.
   ctx.fillStyle = '#fde68a';
   ctx.font = 'bold 34px sans-serif';
-  ctx.fillText(`SCORE  ${world.state.finalScore}`, VIEW_W / 2, 560);
+  ctx.fillText(`SCORE  ${world.state.finalScore}`, VIEW_W / 2, 250);
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 24px sans-serif';
   ctx.fillText('PRESS SPACE OR CLICK TO RUN AGAIN', VIEW_W / 2, 620);
